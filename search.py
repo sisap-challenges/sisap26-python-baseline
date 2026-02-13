@@ -25,7 +25,7 @@ def run(dataset, task, k):
 
     prepare(dataset, task)
 
-    fn, _ = get_fn(dataset, task)
+    fn = get_fn(dataset, task)
     f = h5py.File(fn)
     data = np.array(DATASETS[dataset][task]['data'](f))
     queries = np.array(DATASETS[dataset][task]['queries'](f))
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset',
         choices=DATASETS.keys(),
-        default='llama'
+        default='llama-dev'
     )
 
 
