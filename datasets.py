@@ -45,9 +45,9 @@ DATASETS = {
             'k': 30,
         }
     },
-    'wiki-sparse': {
+    'nq': {
         'task3': {
-            'url': 'https://huggingface.co/datasets/SISAP-Challenges/SISAP2026/resolve/main/nq-dev.h5',
+            'url': 'https://huggingface.co/datasets/SISAP-Challenges/SISAP2026/resolve/refs%2Fpr%2F3/nq.h5',
             'queries': lambda x: load_sparse_matrix(x['otest']['queries']),
             'data': lambda x: load_sparse_matrix(x['train']),
             'gt_I': lambda x: x['otest']['knns'],
