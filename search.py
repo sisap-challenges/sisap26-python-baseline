@@ -5,6 +5,8 @@ import numpy as np
 import os
 from pathlib import Path
 import time
+from tqdm import tqdm
+from scipy.sparse import csr_matrix
 from datasets import DATASETS, prepare, get_fn
 
 def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
@@ -20,7 +22,7 @@ def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
     f.create_dataset('dists', D.shape, dtype=D.dtype)[:] = D
     f.close()
 
-def run(dataset, task, k):
+def run_task2(dataset, task, k):
     print(f'Running {task} on {dataset}')
 
     prepare(dataset, task)
@@ -56,18 +58,58 @@ def run(dataset, task, k):
         elapsed_search = time.time() - start
         print(f"Done searching in {elapsed_search}s.")
 
-        #I = I + 1 # FAISS is 0-indexed, groundtruth is 1-indexed
+        I = I + 1 # FAISS is 0-indexed, groundtruth is 1-indexed
 
         identifier = f"index=({index_identifier}),query=(nprobe={nprobe})"
 
-        store_results(os.path.join("results/", dataset, task, f"{identifier}.h5"), "faissIVF", dataset, task, D, I, elapsed_build, elapsed_search, identifier)
+        store_results(os.path.join("results/", dataset, task, f"{identifier}.h5"), "faissIVF", 
+                      dataset, task, D, I, elapsed_build, elapsed_search, identifier)
+
+def run_task3(dataset, task, k):
+    print(f'Running {task} on {dataset}')
+
+    prepare(dataset, task)
+
+    fn = get_fn(dataset, task)
+    f = h5py.File(fn)
+    corpus = DATASETS[dataset][task]['data'](f)
+    queries = DATASETS[dataset][task]['queries'](f)
+    f.close()
+
+    print(f"Corpus shape: {corpus.shape}")
+    print(f"Queries shape: {queries.shape}")
+
+    n_queries = queries.shape[0]
+
+    I = np.zeros((n_queries, k), dtype=np.int32)
+    D = np.zeros((n_queries, k), dtype=np.float32)
+
+    start_time = time.time()
+    print(f"Extracting top-{k} neighbors...")
+    # Using scipy sparse exact search query by query
+    for i in tqdm(range(n_queries), desc="Processing Queries"):
+        q_dense = queries[i].toarray().flatten()
+        row_scores = corpus.dot(q_dense)
+        
+        top_k_idx = np.argpartition(-row_scores, k)[:k]
+        top_k_sorted_idx = top_k_idx[np.argsort(-row_scores[top_k_idx])]
+        
+        I[i] = top_k_sorted_idx + 1  # 1-based indexing for GT matches
+        D[i] = row_scores[top_k_sorted_idx]
+            
+    elapsed_search = time.time() - start_time
+    print(f"Extraction completed in {elapsed_search:.2f} seconds.")
+
+    identifier = "scipy_exact"
+    store_results(os.path.join("results/", dataset, task, f"{identifier}.h5"), identifier, 
+                  dataset, task, D, I, 0.0, elapsed_search, identifier)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--task",
-        choices=['task1', 'task2'],
+        choices=['task1', 'task2', 'task3'],
         default='task2'
     )
 
@@ -79,5 +121,8 @@ if __name__ == "__main__":
 
 
     args = parser.parse_args()
-    run(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
+    if args.task == 'task3':
+        run_task3(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
+    else:
+        run_task2(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
 

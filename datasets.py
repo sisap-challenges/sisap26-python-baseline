@@ -1,7 +1,8 @@
 import h5py
-import os 
+import os
 from urllib.request import urlretrieve
 from pathlib import Path
+from scipy.sparse import csr_matrix
 
 def download(src, dst):
     print(dst)
@@ -9,6 +10,14 @@ def download(src, dst):
         os.makedirs(Path(dst).parent, exist_ok=True)
         print('downloading %s -> %s...' % (src, dst))
         urlretrieve(src, dst)
+
+def load_sparse_matrix(h5_group):
+    """Reconstructs a SciPy CSR matrix from HDF5 datasets."""
+    indptr = h5_group['indptr'][:]
+    indices = h5_group['indices'][:]
+    data = h5_group['data'][:]
+    shape = tuple(h5_group.attrs['shape'])
+    return csr_matrix((data, indices, indptr), shape=shape)
 
 def get_fn(dataset, task):
     return os.path.join("data", dataset, task, f"{dataset}.h5")
@@ -29,10 +38,19 @@ def get_query_count(dataset, task):
 DATASETS = {
     'llama-dev': {
         'task2' : {
-            'url': 'https://huggingface.co/datasets/vector-index-bench/vibe/resolve/main/llama-128-ip.hdf5',
+            'url': 'https://huggingface.co/datasets/SISAP-Challenges/SISAP2026/resolve/main/llama-dev.h5',
             'queries': lambda x: x['test']['queries'],
             'data': lambda x: x['train'],
             'gt_I': lambda x: x['test']['knns'],
+            'k': 30,
+        }
+    },
+    'wiki-sparse': {
+        'task3': {
+            'url': 'https://huggingface.co/datasets/SISAP-Challenges/SISAP2026/resolve/main/nq-dev.h5',
+            'queries': lambda x: load_sparse_matrix(x['otest']['queries']),
+            'data': lambda x: load_sparse_matrix(x['train']),
+            'gt_I': lambda x: x['otest']['knns'],
             'k': 30,
         }
     }
