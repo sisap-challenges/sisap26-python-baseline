@@ -19,12 +19,31 @@ if __name__ == "__main__":
     parser.add_argument(
         '--task',
         choices=['task1', 'task2', 'task3'],
-        default='task2'
+        required=True,
+    )
+    parser.add_argument(
+        '--dataset',
+        default=None,
+        help="dataset name to filter on; inferred from the CSV if only one dataset is present",
     )
 
     args = parser.parse_args()
     df = pd.read_csv(args.csv)
     df = df[df.task == args.task]
+
+    if args.dataset is None:
+        datasets = set(df.dataset.unique())
+        if len(datasets) == 0:
+            print(f"No results found for task={args.task!r}")
+            raise SystemExit(1)
+        if len(datasets) > 1:
+            print(f"Multiple datasets found for task={args.task!r}: {sorted(datasets)}")
+            print("Please specify --dataset explicitly.")
+            raise SystemExit(1)
+        args.dataset = datasets.pop()
+        print(f"Inferred dataset: {args.dataset}")
+
+    df = df[df.dataset == args.dataset]
 
     if args.algorithm:
         algorithms = [args.algorithm]
