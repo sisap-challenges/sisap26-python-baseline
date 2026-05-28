@@ -1,13 +1,62 @@
+#!/usr/bin/env python3
 import argparse
 import faiss
 import h5py
+import json
 import numpy as np
 import os
 from pathlib import Path
 import time
 from tqdm import tqdm
 import torch
-from datasets import DATASETS, prepare, get_fn
+from scipy.sparse import csr_matrix
+
+
+def load_task_config(task_description_path):
+    """Load task configuration from a config.json file."""
+    with open(task_description_path) as f:
+        return json.load(f)
+
+
+def load_data_from_input(input_path, task_cfg):
+    """Load data directly from the given HDF5 input file using config."""
+
+    def get_h5_item(f, path):
+        if isinstance(path, list):
+            cur = f
+            for p in path:
+                cur = cur[p]
+            return cur
+        cur = f
+        for p in path.split("/"):
+            cur = cur[p]
+        return cur
+
+    def load_sparse_matrix(h5_group):
+        indptr = h5_group["indptr"][:]
+        indices = h5_group["indices"][:]
+        data = h5_group["data"][:]
+        shape = tuple(h5_group.attrs["shape"])
+        return csr_matrix((data, indices, indptr), shape=shape)
+
+    with h5py.File(input_path) as f:
+        data_item = get_h5_item(f, task_cfg["data"])
+        task_name = task_cfg["task"]
+        if task_cfg.get("sparse"):
+            data = load_sparse_matrix(data_item)
+        else:
+            data = data_item[()]
+
+        queries = None
+        if "queries" in task_cfg:
+            q_item = get_h5_item(f, task_cfg["queries"])
+            if task_cfg.get("sparse"):
+                queries = load_sparse_matrix(q_item)
+            else:
+                queries = q_item[()]
+
+    return data, queries, task_cfg, task_name
+
 
 def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
     os.makedirs(Path(dst).parent, exist_ok=True)
@@ -22,21 +71,15 @@ def store_results(dst, algo, dataset, task, D, I, buildtime, querytime, params):
     f.create_dataset('dists', D.shape, dtype=D.dtype)[:] = D
     f.close()
 
-
-def run_task1(dataset, task, k):
+def run_task1(data, task, k, output_dir, dataset="unknown"):
     print(f'Running {task} on {dataset}')
 
-    prepare(dataset, task)
-
-    fn = get_fn(dataset, task)
-    f = h5py.File(fn)
-    data = np.array(DATASETS[dataset][task]['data'](f), dtype=np.float32)
-    f.close()
+    data = np.array(data, dtype=np.float32)
 
     n, d = data.shape
-    k = k + 1 # need to query for one more point to include self-loop 
+    k_search = k + 1  # query for one extra to guarantee k non-self neighbours
 
-    nlist = 1024 # number of clusters/centroids to build the IVF from
+    nlist = 1024  # number of clusters/centroids to build the IVF from
     index_identifier = f"IVF{nlist},SQfp16"
 
     index = faiss.index_factory(d, index_identifier, faiss.METRIC_INNER_PRODUCT)
@@ -53,27 +96,22 @@ def run_task1(dataset, task, k):
         print(f"Starting search on {data.shape} with nprobe={nprobe}")
         start = time.time()
         index.nprobe = nprobe
-        D, I = index.search(data, k)
+        D, I = index.search(data, k_search)
         elapsed_search = time.time() - start
         print(f"Done searching in {elapsed_search}s.")
 
-        I = I + 1 # FAISS is 0-indexed, groundtruth is 1-indexed
+        I = I + 1  # FAISS is 0-indexed, groundtruth is 1-indexed
 
         identifier = f"index=({index_identifier}),query=(nprobe={nprobe})"
 
-        store_results(os.path.join("results/", dataset, task, f"{identifier}.h5"), "faissIVF", 
+        store_results(os.path.join(output_dir, f"{identifier}.h5"), "faissIVF",
                       dataset, task, D, I, elapsed_build, elapsed_search, identifier)
 
-def run_task2(dataset, task, k):
+def run_task2(data, queries, task, k, output_dir, dataset="unknown"):
     print(f'Running {task} on {dataset}')
 
-    prepare(dataset, task)
-
-    fn = get_fn(dataset, task)
-    f = h5py.File(fn)
-    data = np.array(DATASETS[dataset][task]['data'](f))
-    queries = np.array(DATASETS[dataset][task]['queries'](f))
-    f.close()
+    data = np.array(data)
+    queries = np.array(queries)
 
     n, d = data.shape
 
@@ -90,7 +128,7 @@ def run_task2(dataset, task, k):
     print(f"Done training in {elapsed_build}s.")
     assert index.is_trained
 
-    for nprobe in [1, 2, 5, 10, 100]:
+    for nprobe in [1, 2, 5, 10, 100, 1000]:
         print(f"Starting search on {queries.shape} with nprobe={nprobe}")
         start = time.time()
         index.nprobe = nprobe
@@ -102,19 +140,11 @@ def run_task2(dataset, task, k):
 
         identifier = f"index=({index_identifier}),query=(nprobe={nprobe})"
 
-        store_results(os.path.join("results/", dataset, task, f"{identifier}.h5"), "faissIVF", 
+        store_results(os.path.join(output_dir, f"{identifier}.h5"), "faissIVF",
                       dataset, task, D, I, elapsed_build, elapsed_search, identifier)
 
-def run_task3(dataset, task, k):
+def run_task3(corpus, queries, task, k, output_dir, dataset="unknown"):
     print(f'Running {task} on {dataset}')
-
-    prepare(dataset, task)
-
-    fn = get_fn(dataset, task)
-    f = h5py.File(fn)
-    corpus = DATASETS[dataset][task]['data'](f)
-    queries = DATASETS[dataset][task]['queries'](f)
-    f.close()
 
     print(f"Corpus shape: {corpus.shape}")
     print(f"Queries shape: {queries.shape}")
@@ -169,34 +199,45 @@ def run_task3(dataset, task, k):
     print(f"Extraction completed in {elapsed_search:.2f} seconds.")
 
     identifier = "pytorch_sparse_mm"
-    store_results(os.path.join("results/", dataset, task, f"{identifier}.h5"), identifier, 
+    store_results(os.path.join(output_dir, f"{identifier}.h5"), identifier,
                   dataset, task, D, I, 0.0, elapsed_search, identifier)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--task",
-        choices=['task1', 'task2', 'task3'],
-        default='task2'
+        "--input",
+        required=True,
+        help="Path to the input HDF5 benchmark file (e.g. benchmark-dev-gooaq-small.h5)"
     )
-
     parser.add_argument(
-        '--dataset',
-        choices=DATASETS.keys(),
-        default='llama-dev'
+        "--task-description",
+        required=True,
+        help="Path to the task config JSON file (e.g. config.json)"
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Directory where result HDF5 files will be written"
     )
 
     args = parser.parse_args()
-    if args.task not in DATASETS[args.dataset]:
-        print(f"Task '{args.task}' incompatible with dataset '{args.dataset}'")
-        exit(1)    
 
-    if args.task == 'task1':
-        run_task1(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
-    elif args.task == 'task2':
-        run_task2(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
-    elif args.task == 'task3':
-        run_task3(args.dataset, args.task, DATASETS[args.dataset][args.task]['k'])
+    cfg = load_task_config(args.task_description)
+    data, queries, task_cfg, task_type = load_data_from_input(args.input, cfg)
 
+    k = task_cfg.get("k", 10)
+    dataset = task_cfg["dataset_name"]
+    output_dir = args.output
+    os.makedirs(output_dir, exist_ok=True)
+
+    if task_type == 'task1':
+        run_task1(data, task_type, k, output_dir, dataset)
+    elif task_type == 'task2':
+        run_task2(data, queries, task_type, k, output_dir, dataset)
+    elif task_type == 'task3':
+        run_task3(data, queries, task_type, k, output_dir, dataset)
+    else:
+        print(f"Unknown task type '{task_type}' in config.")
+        exit(1)
 
