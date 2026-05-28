@@ -1,7 +1,9 @@
 for task in 1 2 3; do
     echo Running Task $task
+    mkdir -p results/task-$task-spot-check
     docker run \
-        -it \
+        --rm \
+        --user "$(id -u):$(id -g)" \
         --cpus=4 \
         --memory=16g \
         --memory-swap=16g \
@@ -9,5 +11,5 @@ for task in 1 2 3; do
         --volume $(pwd)/search.py:/app/search.py:ro \
         --volume $(pwd)/data:/app/data:ro \
         --volume $(pwd)/results:/app/results:rw \
-        -t sisap-baseline --input data/task-$task-spot-check/*.h5 --task-description data/task-$task-spot-check/config.json --output results/task-$task-spot-check/
+        sisap-baseline --input data/task-$task-spot-check/*.h5 --task-description data/task-$task-spot-check/config.json --output results/task-$task-spot-check/
 done
