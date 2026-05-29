@@ -18,6 +18,3 @@ RUN pip install torch~=2.4.0 --index-url https://download.pytorch.org/whl/cpu
 
 # Copy source code
 COPY . .
-
-# Default command
-ENTRYPOINT ["python", "search.py"]

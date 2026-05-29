@@ -50,6 +50,25 @@ will produce a summary file of the results with the computed recall against the 
 
 This csv file can be further processed to create plots (using `python plot.py --task {task1, task2, task3} res.csv`) and show the fastest solutions above a certain recall threshold (using `python show_operating_points.py`).
 
+## Task configuration format (`config.json`)
+
+Each dataset directory under `data/` contains a `config.json` file that describes the task. The fields are:
+
+| Field | Type | Description |
+|---|---|---|
+| `task` | string | Task identifier: `"task1"`, `"task2"`, or `"task3"` |
+| `data` | string | HDF5 group containing the database vectors (e.g. `"train"`) |
+| `queries` | string | HDF5 path to the query vectors (task2/task3 only) |
+| `gt_I` | string or array | HDF5 path(s) to the ground-truth nearest-neighbor indices |
+| `k` | int | Number of nearest neighbors to retrieve |
+| `dataset_name` | string | Human-readable dataset identifier |
+| `filename` | string | Name of the HDF5 data file |
+| `sparse` | bool | If `true`, vectors are sparse (task3 only); absent means `false` |
+
+**Example (task1):** all-kNN — no separate query set; `gt_I` is a list of two HDF5 paths `["allknn", "knns"]` pointing to the full neighbor graph.
+
+**Example (task2/3):** query-search — `queries` and `gt_I` are single HDF5 paths for the query vectors and their ground-truth neighbors, respectively.
+
 ## How to take this to create my own system
 You can fork this repository and polish it to create your solution. Please also take care of the ci workflow (see below).
 
