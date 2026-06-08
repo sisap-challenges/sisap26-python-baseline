@@ -22,7 +22,7 @@ set -euo pipefail
 
 if ! command -v hf &>/dev/null; then
     echo "Error: hf command not found."
-    echo "Please install it with: pip install -U huggingface_hub[cli]"
+    echo "Please install it with: pip install -U huggingface_hub"
     exit 1
 fi
 
