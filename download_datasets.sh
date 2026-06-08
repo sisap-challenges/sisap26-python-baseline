@@ -10,9 +10,15 @@
 #                  Skips the large full-scale datasets (wikipedia ~15 GB, nq ~7 GB).
 #
 # After running this script every dataset is ready to use:
-#   python search.py --task task1 --dataset wikipedia-small
-#   python search.py --task task2 --dataset llama-dev
-#   python search.py --task task3 --dataset fiqa-dev
+#   python search.py --input data/task-1-spot-check/*.h5 --task-description data/task-1-spot-check/config.json --output results/task-1-spot-check/
+#   python search.py --input data/task-2-spot-check/*.h5 --task-description data/task-2-spot-check/config.json --output results/task-2-spot-check/
+#   python search.py --input data/task-3-spot-check/*.h5 --task-description data/task-3-spot-check/config.json --output results/task-3-spot-check/
+#   python search.py --input data/wikipedia-small/*.h5 --task-description data/wikipedia-small/config.json --output results/wikipedia-small/
+#   python search.py --input data/llama-dev/*.h5 --task-description data/llama-dev/config.json --output results/llama-dev/
+#   python search.py --input data/fiqa-dev/*.h5 --task-description data/fiqa-dev/config.json --output results/fiqa-dev/
+# Alternatively, use run_search.sh to run these with docker, e.g.:"
+#   ./run_search.sh                     # run all three spot checks"
+#   ./run_search.sh wikipedia-small     # run on wikipedia-small only"
 
 set -euo pipefail
 
@@ -132,6 +138,12 @@ echo "    task-2-spot-check data/task-2-spot-check/"
 echo "    task-3-spot-check data/task-3-spot-check/"
 echo ""
 echo "Run search.py with any of these dataset names, e.g.:"
-echo "  python search.py --task task1 --dataset wikipedia-small"
-echo "  python search.py --task task2 --dataset llama-dev"
-echo "  python search.py --task task3 --dataset fiqa-dev"
+echo "  python search.py --input data/task-1-spot-check/*.h5 --task-description data/task-1-spot-check/config.json --output results/task-1-spot-check/"
+echo "  python search.py --input data/task-2-spot-check/*.h5 --task-description data/task-2-spot-check/config.json --output results/task-2-spot-check/"
+echo "  python search.py --input data/task-3-spot-check/*.h5 --task-description data/task-3-spot-check/config.json --output results/task-3-spot-check/"
+echo "  python search.py --input data/wikipedia-small/*.h5 --task-description data/wikipedia-small/config.json --output results/wikipedia-small/"
+echo "  python search.py --input data/llama-dev/*.h5 --task-description data/llama-dev/config.json --output results/llama-dev/"
+echo "  python search.py --input data/fiqa-dev/*.h5 --task-description data/fiqa-dev/config.json --output results/fiqa-dev/"
+echo "Alternatively, use run_search.sh to run these with docker, e.g.:"
+echo "  ./run_search.sh                     # run all three spot checks"
+echo "  ./run_search.sh wikipedia-small     # run on wikipedia-small only"

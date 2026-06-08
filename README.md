@@ -44,6 +44,10 @@ Run `./download_datasets.sh` to download all datasets. You can provide `--small-
 
 ## Running the Code
 The suggested approach is to run the the Docker container as detailed in `run_search.sh`.
+You can run without docker as follows:
+```py
+python search.py --input data/wikipedia-small/*.h5 --task-description data/wikipedia-small/config.json --output results/wikipedia-small/
+```
 
 ### Evaluation
 
@@ -52,7 +56,7 @@ python eval.py results.csv
 ```
 will produce a summary file of the results with the computed recall against the ground truth data. 
 
-This csv file can be further processed to create plots (using `python plot.py --task {task1, task2, task3} res.csv`) and show the fastest solutions above a certain recall threshold (using `python show_operating_points.py`).
+This csv file can be further processed to create plots (using `python plot.py --task {task1, task2, task3} res.csv` or `python plot.py --task {task1, task2, task3} --dataset {dataset_name}`) and show the fastest solutions above a certain recall threshold (using `python show_operating_points.py`).
 
 ## Task configuration format (`config.json`)
 
