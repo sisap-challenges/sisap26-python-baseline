@@ -44,10 +44,15 @@ Run `./download_datasets.sh` to download all datasets. You can provide `--small-
 
 ## Running the Code
 The suggested approach is to run the the Docker container as detailed in `run_search.sh`.
-You can run without docker as follows:
+To run on a specific dataset, for example:
+```
+./run_search.sh wikipedia-small
+```
+You can also test without docker as follows (not recommended):
 ```py
 python search.py --input data/wikipedia-small/*.h5 --task-description data/wikipedia-small/config.json --output results/wikipedia-small/
 ```
+Be warned that this will use all of your available cores, which may be undesireable on your local machine.
 
 ### Evaluation
 
