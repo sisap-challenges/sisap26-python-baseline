@@ -24,11 +24,37 @@ def get_all_results(dirname):
 
 
 def get_recall(I, gt, k):
-    """Compute Recall@k averaged over all queries."""
-    assert k <= I.shape[1], f"k={k} exceeds result columns {I.shape[1]}"
+    """
+    Compute Recall@k averaged over all queries.
+    
+    Handles two result formats:
+    - n x k: results are expected to exclude self-loops
+    - n x (k+1): results are expected to include self-loops in first position
+    
+    Ground truth format is assumed to be n x m where m >= k+1,
+    with self-loops in the first column.
+    
+    Always compares the k nearest neighbors EXCLUDING self-loops.
+    """
     assert I.shape[0] == gt.shape[0], "query count mismatch between results and ground truth"
+    assert gt.shape[1] >= k + 1, f"Ground truth needs at least {k+1} columns (self + {k} neighbors), got {gt.shape[1]}"
+    
+    if I.shape[1] == k + 1:
+        # Results include self-loops: use columns [1:k+1] (skip first column)
+        I_to_compare = I[:, 1:k+1]
+        print(f"  Results shape {I.shape}: assumed self-loops, comparing columns [1:{k+1}]")
+    elif I.shape[1] == k:
+        # Results exclude self-loops: use columns [:k]
+        I_to_compare = I[:, :k]
+        print(f"  Results shape {I.shape}: assumed no self-loops, comparing columns [0:{k}]")
+    else:
+        raise ValueError(f"Results shape {I.shape} is neither {I.shape[0]}x{k} nor {I.shape[0]}x{k+1}")
+    
+    # Ground truth: always skip first column (self-loop) and use next k columns
+    gt_to_compare = gt[:, 1:k+1]  # Skip self-loop, take next k neighbors
+    
     hits = np.array([
-        len(np.intersect1d(I[i, :k], gt[i, :k]))
+        len(np.intersect1d(I_to_compare[i], gt_to_compare[i]))
         for i in range(len(I))
     ])
     return hits.sum() / (len(I) * k)
