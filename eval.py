@@ -60,22 +60,26 @@ def get_recall(I, gt, k):
     Always compares the k nearest neighbors EXCLUDING self-loops.
     """
     if I.shape[0] != gt.shape[0]:
-        print(I.shape[0])
-        print(gt.shape[0])
-        return -1
+        return (-1, f"Query count mismatch {I.shape[0]} vs. {gt.shape[0]}")
+
     assert I.shape[0] == gt.shape[0], "query count mismatch between results and ground truth"
     assert gt.shape[1] >= k + 1, f"Ground truth needs at least {k+1} columns (self + {k} neighbors), got {gt.shape[1]}"
     
+    msg = None
     if I.shape[1] == k + 1:
         # Results include self-loops: use columns [1:k+1] (skip first column)
         I_to_compare = I[:, 1:k+1]
-        print(f"  Results shape {I.shape}: assumed self-loops, comparing columns [1:{k+1}]")
+        msg = f"OK, Results shape {I.shape}: assumed self-loops, comparing columns [1:{k+1}]"
+        print(msg)
     elif I.shape[1] == k:
         # Results exclude self-loops: use columns [:k]
         I_to_compare = I[:, :k]
-        print(f"  Results shape {I.shape}: assumed no self-loops, comparing columns [0:{k}]")
+        msg = f"Ok, Results shape {I.shape}: assumed no self-loops, comparing columns [0:{k}]"
+        print(msg)
     else:
-        raise ValueError(f"Results shape {I.shape} is neither {I.shape[0]}x{k} nor {I.shape[0]}x{k+1}")
+        msg = f"Results shape {I.shape} is neither {I.shape[0]}x{k} nor {I.shape[0]}x{k+1}"
+        print(msg)
+        return (-1, msg)
     
     # Ground truth: always skip first column (self-loop) and use next k columns
     gt_to_compare = gt[:, 1:k+1]  # Skip self-loop, take next k neighbors
@@ -84,7 +88,7 @@ def get_recall(I, gt, k):
         len(np.intersect1d(I_to_compare[i], gt_to_compare[i]))
         for i in range(len(I))
     ])
-    return hits.sum() / (len(I) * k)
+    return (hits.sum() / (len(I) * k), msg)
 
 
 def add_details_from_tira(fn, row):
@@ -188,7 +192,8 @@ if __name__ == "__main__":
             k = DATASETS[dataset][task]["k"]
             recall = get_recall(knns, gt_I, k)
             row = dict(attrs)
-            row["recall"] = recall
+            row["recall"] = recall[0]
+            row["recall_description"] = recall[1]
             add_details_from_tira(fn, row)
 
             writer.writerow(row)
