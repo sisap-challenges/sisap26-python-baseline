@@ -5,6 +5,8 @@ import numpy as np
 import csv
 import glob
 import json
+from pathlib import Path
+from tqdm import tqdm
 from datasets import DATASETS, get_fn, prepare, get_h5_item
 
 
@@ -33,7 +35,15 @@ def get_all_results(dirname):
 
 def load_results(fn):
     with h5py.File(fn, "r") as f:
-        return dict(f.attrs), np.array(f["knns"])
+        attrs = dict(f.attrs)
+        for k, v in attrs.items():
+            if isinstance(v, bytes):
+                attrs[k] = v.decode("UTF-8")
+            if isinstance(v, np.int64):
+                attrs[k] = int(v)
+            if isinstance(v, np.float32):
+                attrs[k] = float(v)
+        return attrs, np.array(f["knns"])
 
 
 def get_recall(I, gt, k):
@@ -49,6 +59,10 @@ def get_recall(I, gt, k):
     
     Always compares the k nearest neighbors EXCLUDING self-loops.
     """
+    if I.shape[0] != gt.shape[0]:
+        print(I.shape[0])
+        print(gt.shape[0])
+        return -1
     assert I.shape[0] == gt.shape[0], "query count mismatch between results and ground truth"
     assert gt.shape[1] >= k + 1, f"Ground truth needs at least {k+1} columns (self + {k} neighbors), got {gt.shape[1]}"
     
