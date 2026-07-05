@@ -3,24 +3,36 @@ import h5py
 import numpy as np
 import csv
 import glob
+import json
 from datasets import DATASETS, get_fn, prepare, get_h5_item
 
 
 def get_all_results(dirname):
-    """Yield (path, attrs, knns) for every valid result .h5 file under dirname."""
+    """Return all paths with result .h5 file under dirname."""
     seen = set()
     mask = dirname + "/**/*.h5"
     print(f"Searching for results matching: {mask}")
+    ret = []
     for fn in glob.iglob(mask, recursive=True):
         if fn in seen:
             continue
         seen.add(fn)
-        with h5py.File(fn, "r") as f:
-            if "knns" not in f or "dataset" not in f.attrs or "task" not in f.attrs:
-                print(f"Ignoring {fn}")
-                continue
-            print(fn)
-            yield fn, dict(f.attrs), np.array(f["knns"])
+        try:
+            with h5py.File(fn, "r") as f:
+                if "knns" not in f:
+                    print(f"Ignoring {fn}")
+                    continue
+
+            ret += [fn]
+        except:
+            print(f"Could not load {fn}")
+
+    return ret
+
+
+def load_results(fn):
+    with h5py.File(fn, "r") as f:
+        return dict(f.attrs), np.array(f["knns"])
 
 
 def get_recall(I, gt, k):
@@ -60,6 +72,38 @@ def get_recall(I, gt, k):
     return hits.sum() / (len(I) * k)
 
 
+def add_details_from_tira(fn, row):
+    software_details = Path(fn).parent.parent / "execution-details.json"
+
+    if software_details.is_file():
+        software_details = json.loads(software_details.read_text())["system"]
+        to_delete = ["docker_software_id", "user_image_name", "tira_image_name", "cache_behaviour", "task_id", "paper_link", "input_docker_software", "link_code", "mount_hf_model", "workflow_configuration", "forward_environment_variable", "input_docker_software_id", "input_upload_id", "ir_re_ranker", "ir_re_ranking_input", "previous_stages", "tira_image_workdir"]
+        for i in to_delete:
+            del software_details[i]
+        software_details = json.dumps(software_details)
+    else:
+        software_details = None
+
+    ir_metadata = Path(fn).parent / ".tracking-results.yml"
+    if ir_metadata.is_file():
+        import yaml
+        ir_metadata = yaml.safe_load(ir_metadata.read_text())
+        tmp = {}
+        for i in ["cpu", "ram"]:
+            for j in ["system", "process"]:
+                tmp[f"{i}-{j}-max"] = ir_metadata["resources"][i][f"used {j}"]["max"]
+
+        tmp["process-wallclock"] = ir_metadata["resources"]["runtime"]["wallclock"]
+        ir_metadata = tmp
+    else:
+        ir_metadata = {}
+
+    row["software"] = software_details
+    if ir_metadata:
+        for k, v in ir_metadata.items():
+            row[k] = v
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -67,19 +111,49 @@ if __name__ == "__main__":
         help="directory in which results are stored",
         default="results",
     )
+    parser.add_argument(
+        "--dataset",
+        help="the dataset to evaluate (otherwise look into the .h5 attributes)",
+        default=None,
+    )
+    parser.add_argument(
+        "--task",
+        help="the task to evaluate (otherwise look into the .h5 attributes)",
+        default=None,
+    )
+    parser.add_argument(
+        "--cache",
+        help="cache file for faster ",
+        default=None,
+    )
     parser.add_argument("csvfile")
     args = parser.parse_args()
 
     gt_cache = {}  # (dataset, task) -> gt_I array
     columns = ["dataset", "task", "algo", "buildtime", "querytime", "params", "recall"]
+    row_cache = {}
+
+    if args.cache and Path(args.cache).is_file():
+        with open(args.cache, "r") as f:
+            for l in f:
+                try:
+                    l = json.loads(l)
+                    row_cache[l["fn"]] = l["row"]
+                except:
+                    pass
+        print(f"Have {len(row_cache)} lines in cache {args.cache}.")
 
     with open(args.csvfile, "w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
 
-        for fn, attrs, knns in get_all_results(args.results):
-            dataset = attrs["dataset"]
-            task = attrs["task"]
+        for fn in tqdm(list(get_all_results(args.results))):
+            if fn in row_cache:
+                writer.writerow(row_cache[fn])
+                continue
+            attrs, knns = load_results(fn)
+            dataset = attrs["dataset"] if not args.dataset else args.dataset
+            task = attrs["task"] if not args.task else args.task
 
             if dataset not in DATASETS or task not in DATASETS[dataset]:
                 print(f"Skipping {fn}: unknown dataset={dataset!r} task={task!r}")
@@ -100,5 +174,11 @@ if __name__ == "__main__":
             recall = get_recall(knns, gt_I, k)
             row = dict(attrs)
             row["recall"] = recall
-            print(dataset, task, attrs.get("algo"), attrs.get("params"), "=>", recall)
+            add_details_from_tira(fn, row)
+
             writer.writerow(row)
+            
+            if args.cache:
+                with open(args.cache, "a+") as f:
+                    f.write(json.dumps({"fn": fn, "row": row}) + "\n")
+
